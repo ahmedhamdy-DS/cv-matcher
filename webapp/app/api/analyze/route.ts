@@ -3,63 +3,73 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { embedText } from "@/lib/embedCV";
 import { getAllJobs } from "@/lib/jobs";
 import { rankJobsBySimilarity } from "@/lib/similarity";
-import type { AnalyzeRequestBody, AnalyzeResponse, JobAnalysis, RankedJob } from "@/lib/types";
+import type { 
+  AnalyzeRequestBody, 
+  AnalyzeResponse, 
+  JobAnalysis, 
+  RankedJob,
+  CandidateCV 
+} from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// gemini-2.5-flash has a genuinely free tier (no credit card required)
-// with daily quotas generous enough for a portfolio project. See
-// ai.google.dev/pricing for current limits.
 const GEMINI_MODEL = "gemini-2.5-flash";
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? "");
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as AnalyzeRequestBody;
-    const cvText = (body.cvText ?? "").trim();
-    const topN = Math.min(Math.max(body.topN ?? 6, 1), 12);
+    const candidates = body.candidates ?? [];
+    const topN = Math.min(Math.max(body.topN ?? 3, 1), 6); // قللنا الـ default لـ 3 عشان نوفر Tokens
 
-    if (!cvText) {
-      return NextResponse.json({ error: "cvText is required" }, { status: 400 });
-    }
-    if (cvText.length > 20000) {
-      return NextResponse.json({ error: "CV text is too long" }, { status: 400 });
+    if (!candidates.length || candidates.length > 3) {
+      return NextResponse.json({ error: "Must provide 1 to 3 candidates" }, { status: 400 });
     }
     if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json(
-        { error: "Server is missing GEMINI_API_KEY" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Server is missing GEMINI_API_KEY" }, { status: 500 });
     }
 
-    // 1. Embed the CV in JS, same model/space as the offline job embeddings.
-    const cvEmbedding = await embedText(cvText);
-
-    // 2. In-memory cosine similarity search over all 382 jobs.
     const jobs = getAllJobs();
-    const ranked = rankJobsBySimilarity(cvEmbedding, jobs, topN);
 
-    // 3. Ask Gemini to analyze fit for the shortlisted matches.
-    const analyses = await analyzeMatches(cvText, ranked);
+    // 1 & 2. حساب الـ Embeddings والبحث عن أفضل الوظائف لكل مرشح بالتوازي
+    const candidateRankings = await Promise.all(
+      candidates.map(async (c) => {
+        // حماية من السير الذاتية الطويلة جداً
+        const safeText = c.text.trim().substring(0, 15000); 
+        const embedding = await embedText(safeText);
+        const ranked = rankJobsBySimilarity(embedding, jobs, topN);
+        return { candidate: c, ranked };
+      })
+    );
 
+    // 3. إرسال جميع المرشحين ووظائفهم لـ Gemini في طلب واحد (Batching)
+    const analyses = await analyzeMultipleMatches(candidateRankings);
+
+    // 4. تجميع الرد النهائي
     const response: AnalyzeResponse = {
-      overallRecommendation: analyses.overallRecommendation,
-      results: ranked.map((r) => ({
-        job: r.job,
-        matchPercent: r.matchPercent,
-        analysis:
-          analyses.perJob.find((a) => a.jobId === r.job.id) ??
-          fallbackAnalysis(r.job.id),
-      })),
+      overallRecommendation: analyses.overall_hr_recommendation,
+      candidates: candidateRankings.map(({ candidate, ranked }) => {
+        const aiAnalysis = analyses.candidates.find((a) => a.candidate_id === candidate.id);
+
+        return {
+          candidateId: candidate.id,
+          candidateName: candidate.name,
+          candidateSummary: aiAnalysis?.summary ?? "Analysis unavailable.",
+          topJobs: ranked.map((r) => ({
+            job: r.job,
+            matchPercent: r.matchPercent,
+            analysis: aiAnalysis?.per_job.find((a) => a.jobId === r.job.id) ?? fallbackAnalysis(r.job.id),
+          })),
+        };
+      }),
     };
 
     return NextResponse.json(response);
   } catch (err) {
     console.error("analyze route error:", err);
     return NextResponse.json(
-      { error: "Something went wrong analyzing your CV. Please try again." },
+      { error: "Something went wrong analyzing the candidates. Please try again." },
       { status: 500 }
     );
   }
@@ -75,104 +85,84 @@ function fallbackAnalysis(jobId: string): JobAnalysis {
   };
 }
 
-async function analyzeMatches(
-  cvText: string,
-  ranked: RankedJob[]
-): Promise<{ overallRecommendation: string; perJob: JobAnalysis[] }> {
-  const jobsForPrompt = ranked.map((r) => ({
-    id: r.job.id,
-    title: r.job.title,
-    company: r.job.company_name,
-    career_level: r.job.career_level,
-    location: [r.job.area, r.job.city, r.job.country].filter(Boolean).join(", "),
-    workplace_arrangement: r.job.workplace_arrangement,
-    experience_years_min: r.job.experience_years_min,
-    experience_years_max: r.job.experience_years_max,
-    keywords: r.job.keywords,
-    requirements: r.job.requirements_clean,
-    match_percent: r.matchPercent,
+async function analyzeMultipleMatches(
+  rankings: Array<{ candidate: CandidateCV; ranked: RankedJob[] }>
+) {
+  // تجهيز البيانات اللي هتتبعت للـ Prompt
+  const promptData = rankings.map((r) => ({
+    candidate_id: r.candidate.id,
+    candidate_name: r.candidate.name,
+    cv_text: r.candidate.text.substring(0, 4000), // تقليل حجم النص عشان مانعديش الـ limit
+    shortlisted_jobs: r.ranked.map((j) => ({
+      id: j.job.id,
+      title: j.job.title,
+      company: j.job.company_name,
+      requirements: j.job.requirements_clean,
+      match_percent: j.matchPercent,
+    })),
   }));
 
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,
     systemInstruction:
-      "You are a career-matching assistant. You are given a candidate's CV text and a shortlist of job postings " +
-      "that were already selected by semantic similarity search. For each job, assess fit honestly: call out real " +
-      "strengths and real gaps relative to the stated requirements and experience level. Be specific and concrete, " +
-      "grounded only in the CV text and job data provided — do not invent experience the candidate didn't mention.",
+      "You are an expert HR and recruitment AI assistant. You are given data for up to 3 candidates. " +
+      "For each candidate, you will receive their CV text and a shortlist of open roles (already filtered by semantic similarity). " +
+      "Your task is to evaluate each candidate's fit for their respective top roles based strictly on facts, noting specific strengths (technologies, years of experience, stability) and gaps. " +
+      "Finally, provide an overall comparative HR recommendation stating which candidate is the strongest overall hire and why.",
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
         type: SchemaType.OBJECT,
         properties: {
-          overall_recommendation: {
+          overall_hr_recommendation: {
             type: SchemaType.STRING,
-            description:
-              "2-4 sentences summarizing the candidate's profile and which of the shortlisted roles fit best overall, and why.",
+            description: "A strong paragraph comparing the candidates and recommending the best overall hire.",
           },
-          per_job: {
+          candidates: {
             type: SchemaType.ARRAY,
             items: {
               type: SchemaType.OBJECT,
               properties: {
-                job_id: { type: SchemaType.STRING },
-                verdict: {
-                  type: SchemaType.STRING,
-                  enum: ["strong_fit", "possible_fit", "weak_fit"],
-                },
-                strengths: {
+                candidate_id: { type: SchemaType.STRING },
+                summary: { type: SchemaType.STRING, description: "A brief professional summary of this specific candidate." },
+                per_job: {
                   type: SchemaType.ARRAY,
-                  items: { type: SchemaType.STRING },
-                  description: "2-4 short bullet points on why the candidate fits this role.",
-                },
-                gaps: {
-                  type: SchemaType.ARRAY,
-                  items: { type: SchemaType.STRING },
-                  description: "1-3 short bullet points on gaps or missing requirements.",
-                },
-                summary: {
-                  type: SchemaType.STRING,
-                  description: "One or two sentence summary of the fit for this specific role.",
+                  items: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                      jobId: { type: SchemaType.STRING },
+                      verdict: {
+                        type: SchemaType.STRING,
+                        enum: ["strong_fit", "possible_fit", "weak_fit"],
+                      },
+                      strengths: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                      gaps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                      summary: { type: SchemaType.STRING },
+                    },
+                    required: ["jobId", "verdict", "strengths", "gaps", "summary"],
+                  },
                 },
               },
-              required: ["job_id", "verdict", "strengths", "gaps", "summary"],
+              required: ["candidate_id", "summary", "per_job"],
             },
           },
         },
-        required: ["overall_recommendation", "per_job"],
+        required: ["overall_hr_recommendation", "candidates"],
       },
     },
   });
 
   const result = await model.generateContent(
-    `CANDIDATE CV:\n${cvText}\n\n` +
-      `SHORTLISTED JOBS (already ranked by embedding similarity):\n${JSON.stringify(
-        jobsForPrompt,
-        null,
-        2
-      )}`
+    `CANDIDATES AND JOBS DATA:\n${JSON.stringify(promptData, null, 2)}`
   );
 
   const text = result.response.text();
-  const parsed = JSON.parse(text) as {
-    overall_recommendation: string;
-    per_job: Array<{
-      job_id: string;
-      verdict: JobAnalysis["verdict"];
-      strengths: string[];
-      gaps: string[];
+  return JSON.parse(text) as {
+    overall_hr_recommendation: string;
+    candidates: Array<{
+      candidate_id: string;
       summary: string;
+      per_job: JobAnalysis[];
     }>;
-  };
-
-  return {
-    overallRecommendation: parsed.overall_recommendation,
-    perJob: parsed.per_job.map((p) => ({
-      jobId: p.job_id,
-      verdict: p.verdict,
-      strengths: p.strengths ?? [],
-      gaps: p.gaps ?? [],
-      summary: p.summary ?? "",
-    })),
   };
 }

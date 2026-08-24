@@ -18,14 +18,12 @@ export interface JobRecord {
   embedding: number[];
 }
 
-// Job record as sent to the client / LLM — never includes the raw
-// embedding vector (no reason to ship 384 floats to the browser).
 export type JobPublic = Omit<JobRecord, "embedding">;
 
 export interface RankedJob {
   job: JobPublic;
-  similarity: number; // cosine similarity, 0..1
-  matchPercent: number; // similarity rescaled to a friendlier 0..100 display range
+  similarity: number;
+  matchPercent: number;
 }
 
 export interface JobAnalysis {
@@ -36,16 +34,31 @@ export interface JobAnalysis {
   summary: string;
 }
 
-export interface AnalyzeResponse {
-  overallRecommendation: string;
-  results: Array<{
+// ---- التعديلات الجديدة للـ HR Multi-CV ----
+
+export interface CandidateCV {
+  id: string;
+  name: string;
+  text: string;
+}
+
+export interface AnalyzeRequestBody {
+  candidates: CandidateCV[]; // مصفوفة بدل نص واحد
+  topN?: number;
+}
+
+export interface CandidateResult {
+  candidateId: string;
+  candidateName: string;
+  candidateSummary: string; // رأي الموديل في المرشح ده تحديداً
+  topJobs: Array<{
     job: JobPublic;
     matchPercent: number;
     analysis: JobAnalysis;
   }>;
 }
 
-export interface AnalyzeRequestBody {
-  cvText: string;
-  topN?: number;
+export interface AnalyzeResponse {
+  overallRecommendation: string; // التوصية النهائية للمقارنة بين الـ 3 مرشحين
+  candidates: CandidateResult[]; // نتائج كل مرشح منفصلة
 }
