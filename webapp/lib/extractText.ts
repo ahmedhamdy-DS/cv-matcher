@@ -1,7 +1,4 @@
-// Client-side only. Extracts plain text from a File so it can be
-// dropped straight into the CV textarea — no server round-trip.
-// Both libraries are dynamically imported so their browser-only code
-// (DOM APIs, workers) never gets pulled into the server bundle.
+
 
 export async function extractTextFromFile(file: File): Promise<string> {
   const name = file.name.toLowerCase();
@@ -23,14 +20,12 @@ export async function extractTextFromFile(file: File): Promise<string> {
     );
   }
 
-  // Fall back to plain text for .txt/.md/anything else text-based.
   return file.text();
 }
 
 async function extractFromPdf(file: File): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist");
-  // Use the CDN-hosted worker matching the installed pdfjs-dist
-  // version — avoids bundler-specific worker config headaches.
+
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
   const arrayBuffer = await file.arrayBuffer();
