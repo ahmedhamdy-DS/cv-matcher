@@ -1,28 +1,4 @@
-"""
-generate_embeddings.py
 
-One-time, offline step. Reads jobs_data_clean.json, computes a semantic
-embedding for every job posting using sentence-transformers'
-all-MiniLM-L6-v2 (free, local, 384-dim, no API key), and writes
-jobs_with_embeddings.json — the same job records plus an `embedding`
-field per job.
-
-This output file is committed into the Next.js project as static data.
-At runtime, the app embeds the user's CV with the JS port of the same
-model (@xenova/transformers) so both vectors live in the same space,
-and does an in-memory cosine-similarity search — no vector DB needed
-for 382 records. Run verify_embedding_parity.py after any dependency
-bump on either side to confirm the two still agree.
-
-Also writes jobs_with_embeddings.metadata.json alongside the main output
-(model name/revision, dim, pooling, normalization, max tokens, generation
-timestamp) so downstream code can detect stale/mismatched embeddings if
-the model ever changes.
-
-Usage:
-    pip install -r requirements.txt
-    python generate_embeddings.py
-"""
 
 import json
 import re
@@ -40,12 +16,9 @@ OUTPUT_PATH = Path("jobs_with_embeddings.json")
 METADATA_PATH = Path("jobs_with_embeddings.metadata.json")
 
 EMBEDDING_DIM = 384
-MAX_TOKENS = 256  # all-MiniLM-L6-v2's hard token limit
+MAX_TOKENS = 256  
 
-# Keep the embedded/committed JSON file a reasonable size — these are
-# separate, character-based truncations of the *display* fields, unrelated
-# to the tokenizer-aware truncation applied to full_text before encoding
-# below (full_text is what actually goes into the model).
+
 MAX_FIELD_CHARS = 500
 
 
@@ -55,17 +28,12 @@ def truncate(text, max_chars=MAX_FIELD_CHARS):
     return text[:max_chars]
 
 
-# ---------------------------------------------------------------------------
-# Encoding cleanup: full_text sometimes contains mojibake left over from the
-# scraping step (literal "????" runs from lossy replacement, or mis-decoded
-# UTF-8 bytes). Detect and repair before it gets embedded as if it were
-# meaningful signal.
-# ---------------------------------------------------------------------------
+
 
 _MOJIBAKE_PATTERNS = [
-    re.compile(r"\?{3,}"),                # literal "????" runs from lossy replacement
-    re.compile(r"\ufffd{2,}"),             # repeated U+FFFD replacement characters
-    re.compile(r"(â€[€™œ\x9d\x94\x93˜¦])"),  # UTF-8 bytes misread as Latin-1/CP1252
+    re.compile(r"\?{3,}"),                
+    re.compile(r"\ufffd{2,}"),          
+    re.compile(r"(â€[€™œ\x9d\x94\x93˜¦])"),  
     re.compile(r"(Ã[¢©¨¯ ])"),
 ]
 
@@ -112,13 +80,7 @@ def clean_full_text_fields(jobs, field="full_text"):
     return flagged_ids, still_flagged_ids
 
 
-# ---------------------------------------------------------------------------
-# Tokenizer-aware truncation: model.encode() would otherwise silently
-# truncate full_text at MAX_TOKENS internally with no record of it. Do it
-# explicitly first, with the model's own tokenizer (not a character-count
-# heuristic — token-per-char ratio varies too much across postings), so we
-# know exactly what was dropped.
-# ---------------------------------------------------------------------------
+
 
 def truncate_for_model(jobs, tokenizer, field="full_text", max_tokens=MAX_TOKENS):
     """Mutates jobs in place. Returns (truncated_ids, tokens_dropped_total, max_dropped_single)."""
@@ -137,9 +99,7 @@ def truncate_for_model(jobs, tokenizer, field="full_text", max_tokens=MAX_TOKENS
     return truncated_ids, tokens_dropped_total, max_dropped_single
 
 
-# ---------------------------------------------------------------------------
-# Output validation: fail loudly instead of committing broken embeddings.
-# ---------------------------------------------------------------------------
+
 
 class EmbeddingValidationError(Exception):
     pass
@@ -221,9 +181,7 @@ def main():
     if truncated_ids:
         print(f"  truncated IDs: {truncated_ids}")
 
-    # Embed on the full_text field (title + company + level + skills +
-    # description + requirements) — this is what best captures the
-    # semantic content of each posting for CV matching.
+
     texts = [job.get("full_text", "") for job in jobs]
 
     print("Encoding job postings...")
@@ -231,18 +189,18 @@ def main():
         texts,
         batch_size=32,
         show_progress_bar=True,
-        normalize_embeddings=True,  # so cosine similarity == dot product
+        normalize_embeddings=True,  
     )
 
     out = []
     for job, emb in zip(jobs, embeddings):
-        record = dict(job)  # shallow copy, keep all original fields
+        record = dict(job)  
         record["description_clean"] = truncate(record.get("description_clean"))
         record["requirements_clean"] = truncate(record.get("requirements_clean"))
         record["embedding"] = emb.tolist()
         out.append(record)
 
-    # --- validate before writing anything ---
+
     try:
         validate_embeddings(out)
     except EmbeddingValidationError as e:
@@ -252,7 +210,7 @@ def main():
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(out, f)
 
-    # --- model version metadata sidecar ---
+
     revision = None
     try:
         revision = model._first_module().auto_model.config._commit_hash
