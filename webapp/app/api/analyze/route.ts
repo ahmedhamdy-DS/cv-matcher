@@ -43,10 +43,10 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    // 3. إرسال جميع المرشحين ووظائفهم لـ Gemini في طلب واحد (Batching)
+
     const analyses = await analyzeMultipleMatches(candidateRankings);
 
-    // 4. تجميع الرد النهائي
+
     const response: AnalyzeResponse = {
       overallRecommendation: analyses.overall_hr_recommendation,
       candidates: candidateRankings.map(({ candidate, ranked }) => {
@@ -116,7 +116,7 @@ async function analyzeMultipleMatches(
         properties: {
           overall_hr_recommendation: {
             type: SchemaType.STRING,
-            description: "A strong paragraph comparing the candidates and recommending the best overall hire.",
+            description: "A highly scannable HR summary. Format it EXACTLY like this using newline characters:\n🏆 Top Pick: [Candidate Name]\n\n• [Candidate 1]: [1 sentence summary]\n• [Candidate 2]: [1 sentence summary]\n• [Candidate 3]: [1 sentence summary]",
           },
           candidates: {
             type: SchemaType.ARRAY,
