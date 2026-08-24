@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as AnalyzeRequestBody;
     const candidates = body.candidates ?? [];
-    const topN = Math.min(Math.max(body.topN ?? 3, 1), 6); // قللنا الـ default لـ 3 عشان نوفر Tokens
+    const topN = Math.min(Math.max(body.topN ?? 3, 1), 6); 
 
     if (!candidates.length || candidates.length > 3) {
       return NextResponse.json({ error: "Must provide 1 to 3 candidates" }, { status: 400 });
@@ -32,10 +32,10 @@ export async function POST(req: NextRequest) {
 
     const jobs = getAllJobs();
 
-    // 1 & 2. حساب الـ Embeddings والبحث عن أفضل الوظائف لكل مرشح بالتوازي
+    
     const candidateRankings = await Promise.all(
       candidates.map(async (c) => {
-        // حماية من السير الذاتية الطويلة جداً
+       
         const safeText = c.text.trim().substring(0, 15000); 
         const embedding = await embedText(safeText);
         const ranked = rankJobsBySimilarity(embedding, jobs, topN);
@@ -108,7 +108,9 @@ async function analyzeMultipleMatches(
       "You are an expert HR and recruitment AI assistant. You are given data for up to 3 candidates. " +
       "For each candidate, you will receive their CV text and a shortlist of open roles (already filtered by semantic similarity). " +
       "Your task is to evaluate each candidate's fit for their respective top roles based strictly on facts, noting specific strengths (technologies, years of experience, stability) and gaps. " +
-      "Finally, provide an overall comparative HR recommendation stating which candidate is the strongest overall hire and why.",
+      "CRITICAL: You MUST return an analysis for EVERY SINGLE job ID provided in the prompt for each candidate. Do not skip any job. " +
+      "Finally, provide an overall comparative HR recommendation stating which candidate is the strongest overall hire and why. " +
+      "Format the overall_hr_recommendation EXACTLY like this using newline characters:\n🏆 Top Pick: [Candidate Name]\n\n• [Candidate 1]: [1 sentence summary]\n• [Candidate 2]: [1 sentence summary]",
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -152,8 +154,14 @@ async function analyzeMultipleMatches(
     },
   });
 
+
+  const expectedCandidatesCount = promptData.length;
+  const expectedJobsPerCandidate = promptData[0]?.shortlisted_jobs.length || 0;
+
   const result = await model.generateContent(
-    `CANDIDATES AND JOBS DATA:\n${JSON.stringify(promptData, null, 2)}`
+    `CANDIDATES AND JOBS DATA:\n${JSON.stringify(promptData, null, 2)}\n\n` +
+    `CRITICAL INSTRUCTION: You MUST process exactly ${expectedCandidatesCount} candidates. ` +
+    `For EACH candidate, your 'per_job' array MUST contain exactly ${expectedJobsPerCandidate} items corresponding to the provided job IDs. Do NOT skip or omit any job ID.`
   );
 
   const text = result.response.text();
