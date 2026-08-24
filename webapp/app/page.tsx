@@ -94,7 +94,10 @@ export default function Home() {
             <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--mint)", letterSpacing: 0.5, marginBottom: 8 }}>
               OVERALL HR RECOMMENDATION
             </p>
-            <p style={{ fontSize: 15, lineHeight: 1.65 }}>{result.overallRecommendation}</p>
+           
+            <div style={{ fontSize: 15, lineHeight: 1.8, whiteSpace: "pre-wrap", color: "var(--cream)" }}>
+              {result.overallRecommendation}
+            </div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 40 }}>
