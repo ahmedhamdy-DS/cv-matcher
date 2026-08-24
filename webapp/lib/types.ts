@@ -18,14 +18,13 @@ export interface JobRecord {
   embedding: number[];
 }
 
-// Job record as sent to the client / LLM — never includes the raw
-// embedding vector (no reason to ship 384 floats to the browser).
+
 export type JobPublic = Omit<JobRecord, "embedding">;
 
 export interface RankedJob {
   job: JobPublic;
-  similarity: number; // cosine similarity, 0..1
-  matchPercent: number; // similarity rescaled to a friendlier 0..100 display range
+  similarity: number; 
+  matchPercent: number; 
 }
 
 export interface JobAnalysis {
