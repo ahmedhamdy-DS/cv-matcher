@@ -62,3 +62,25 @@ export interface AnalyzeResponse {
   overallRecommendation: string; 
   candidates: CandidateResult[]; 
 }
+
+// --- Single job-description compare flow (HR pastes one JD, compares up to 3 CVs against it) ---
+
+export interface CompareJDRequestBody {
+  jobDescription: string;
+  candidates: CandidateCV[];
+}
+
+export interface JDCandidateResult {
+  candidateId: string;
+  candidateName: string;
+  matchPercent: number;
+  verdict: "strong_fit" | "possible_fit" | "weak_fit";
+  strengths: string[];
+  gaps: string[];
+  summary: string;
+}
+
+export interface CompareJDResponse {
+  overallRecommendation: string;
+  ranking: JDCandidateResult[];
+}

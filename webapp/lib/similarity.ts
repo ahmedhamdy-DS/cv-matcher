@@ -38,3 +38,10 @@ function similarityToDisplayPercent(similarity: number): number {
   const pct = ((clamped - low) / (high - low)) * 93 + 5;
   return Math.round(pct);
 }
+
+// Same scoring used for job-vs-CV, exposed for the single-JD compare flow
+// (compare-jd route): score one CV embedding against one JD embedding.
+export function scoreEmbeddings(a: number[], b: number[]): { similarity: number; matchPercent: number } {
+  const similarity = dot(a, b);
+  return { similarity, matchPercent: similarityToDisplayPercent(similarity) };
+}
