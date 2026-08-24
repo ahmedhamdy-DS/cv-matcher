@@ -34,7 +34,7 @@ export interface JobAnalysis {
   summary: string;
 }
 
-// ---- التعديلات الجديدة للـ HR Multi-CV ----
+
 
 export interface CandidateCV {
   id: string;
@@ -43,14 +43,14 @@ export interface CandidateCV {
 }
 
 export interface AnalyzeRequestBody {
-  candidates: CandidateCV[]; // مصفوفة بدل نص واحد
+  candidates: CandidateCV[]; 
   topN?: number;
 }
 
 export interface CandidateResult {
   candidateId: string;
   candidateName: string;
-  candidateSummary: string; // رأي الموديل في المرشح ده تحديداً
+  candidateSummary: string;
   topJobs: Array<{
     job: JobPublic;
     matchPercent: number;
@@ -59,6 +59,6 @@ export interface CandidateResult {
 }
 
 export interface AnalyzeResponse {
-  overallRecommendation: string; // التوصية النهائية للمقارنة بين الـ 3 مرشحين
-  candidates: CandidateResult[]; // نتائج كل مرشح منفصلة
+  overallRecommendation: string; 
+  candidates: CandidateResult[]; 
 }
