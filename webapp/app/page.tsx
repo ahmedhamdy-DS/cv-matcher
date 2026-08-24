@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import CVInput from "@/components/CVInput";
+import CVInput, { CandidateCV } from "@/components/CVInput";
 import JobResultCard from "@/components/JobResultCard";
 import type { AnalyzeResponse } from "@/lib/types";
 
 export default function Home() {
-  const [cvText, setCvText] = useState("");
+  const [cvs, setCvs] = useState<CandidateCV[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
@@ -19,7 +19,7 @@ export default function Home() {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cvText, topN: 6 }),
+        body: JSON.stringify({ candidates: cvs, topN: 3 }), 
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -35,7 +35,7 @@ export default function Home() {
   }
 
   return (
-    <main style={{ maxWidth: 760, margin: "0 auto", padding: "56px 20px 100px" }}>
+    <main style={{ maxWidth: 900, margin: "0 auto", padding: "56px 20px 100px" }}>
       <header
         style={{
           background: "var(--navy)",
@@ -54,18 +54,18 @@ export default function Home() {
             marginBottom: 10,
           }}
         >
-          FITMATCH
+          FITMATCH FOR HR
         </p>
         <h1 style={{ fontSize: 34, lineHeight: 1.2, marginBottom: 14, color: "var(--white)" }}>
-          Find the roles that actually fit
+          Compare candidates against real roles
         </h1>
         <p style={{ fontSize: 15.5, color: "var(--warm-gray-light)", lineHeight: 1.6, maxWidth: 520, margin: "0 auto" }}>
-          Paste your CV and we&apos;ll match it against real open roles, then break down exactly
-          where you&apos;re strong and where you&apos;ll need to grow — no guesswork.
+          Upload up to 3 CVs. We&apos;ll match each candidate against market open roles and help you 
+          find the best fit instantly.
         </p>
       </header>
 
-      <CVInput value={cvText} onChange={setCvText} onSubmit={handleSubmit} loading={loading} />
+      <CVInput cvs={cvs} onChange={setCvs} onSubmit={handleSubmit} loading={loading} />
 
       {error && (
         <p
@@ -88,24 +88,33 @@ export default function Home() {
               color: "var(--white)",
               borderRadius: "var(--radius-lg)",
               padding: 24,
-              marginBottom: 28,
+              marginBottom: 40,
             }}
           >
             <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--mint)", letterSpacing: 0.5, marginBottom: 8 }}>
-              OVERALL RECOMMENDATION
+              OVERALL HR RECOMMENDATION
             </p>
             <p style={{ fontSize: 15, lineHeight: 1.65 }}>{result.overallRecommendation}</p>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            {result.results.map((r, i) => (
-              <JobResultCard
-                key={r.job.id}
-                job={r.job}
-                matchPercent={r.matchPercent}
-                analysis={r.analysis}
-                index={i}
-              />
+          <div style={{ display: "flex", flexDirection: "column", gap: 40 }}>
+            {result.candidates.map((candidate) => (
+              <div key={candidate.candidateId} style={{ border: "1px solid var(--warm-gray-light)", padding: 24, borderRadius: "var(--radius-lg)", background: "var(--cream)" }}>
+                <h2 style={{ fontSize: 22, color: "var(--navy)", marginBottom: 8 }}>👤 {candidate.candidateName}</h2>
+                <p style={{ fontSize: 14.5, color: "var(--warm-gray)", marginBottom: 24, lineHeight: 1.6 }}>{candidate.candidateSummary}</p>
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                  {candidate.topJobs.map((r, i) => (
+                    <JobResultCard
+                      key={r.job.id}
+                      job={r.job}
+                      matchPercent={r.matchPercent}
+                      analysis={r.analysis}
+                      index={i}
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </section>
