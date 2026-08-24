@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import CVInput, { CandidateCV } from "@/components/CVInput";
 import JobResultCard from "@/components/JobResultCard";
 import type { AnalyzeResponse } from "@/lib/types";
@@ -63,6 +64,12 @@ export default function Home() {
           Upload up to 3 CVs. We&apos;ll match each candidate against market open roles and help you 
           find the best fit instantly.
         </p>
+        <Link
+          href="/compare-jd"
+          style={{ display: "inline-block", marginTop: 18, fontSize: 13.5, color: "var(--mint)", textDecoration: "underline", textUnderlineOffset: 3 }}
+        >
+          Have a specific job description instead? Compare against it →
+        </Link>
       </header>
 
       <CVInput cvs={cvs} onChange={setCvs} onSubmit={handleSubmit} loading={loading} />
