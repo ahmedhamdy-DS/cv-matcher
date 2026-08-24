@@ -1,11 +1,6 @@
 import type { JobRecord, RankedJob } from "./types";
 
-/**
- * Dot product of two equal-length vectors. Since both the job
- * embeddings (from generate_embeddings.py) and the CV embedding
- * (from embedCV.ts) are L2-normalized, dot product == cosine
- * similarity — cheaper to compute and just as correct.
- */
+
 function dot(a: number[], b: number[]): number {
   let sum = 0;
   for (let i = 0; i < a.length; i++) {
@@ -14,11 +9,7 @@ function dot(a: number[], b: number[]): number {
   return sum;
 }
 
-/**
- * Rank all jobs by cosine similarity to the CV vector and return the
- * top N. Plain JS loop over ~382 records — negligible cost, no
- * external vector database required.
- */
+
 export function rankJobsBySimilarity(
   cvEmbedding: number[],
   jobs: JobRecord[],
@@ -30,10 +21,7 @@ export function rankJobsBySimilarity(
     return {
       job: jobPublic,
       similarity,
-      // Cosine similarity for real-world short-text embeddings tends
-      // to cluster in a narrow band (rarely near 0 or 1). Rescale to
-      // a friendlier display range so "good matches" don't all look
-      // like 40-something percent.
+    
       matchPercent: similarityToDisplayPercent(similarity),
     };
   });
@@ -43,10 +31,7 @@ export function rankJobsBySimilarity(
 }
 
 function similarityToDisplayPercent(similarity: number): number {
-  // Empirically, MiniLM cosine similarity for related-but-imperfect
-  // text pairs sits roughly in [0.2, 0.75]. Clamp + rescale that band
-  // to [5, 98] for display, rather than showing raw cosine values
-  // that would make even strong matches look low.
+
   const low = 0.2;
   const high = 0.75;
   const clamped = Math.min(Math.max(similarity, low), high);
