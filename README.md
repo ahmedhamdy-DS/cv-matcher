@@ -1,10 +1,16 @@
 # FitMatch — AI Job-Matching RAG Agent
 
-Matches a candidate's CV against 382 real scraped job postings using semantic embedding similarity, then uses Google Gemini (free tier) to explain the fit — strengths, gaps, and an overall recommendation — for the top matches. Entirely free/self-hosted, including the LLM.
+Matches a candidate's CV against 382 real scraped job postings using semantic embedding similarity, then uses Google Gemini (free tier) to explain the fit — strengths, gaps, and an overall recommendation — for the top matches. Also supports the reverse flow: recruiters paste a Job Description and get a ranked list of the best-matching CVs. Entirely free/self-hosted, including the LLM.
 
 ## Table of contents
 
 - [How it works](#how-it-works)
+- [Screenshots](#screenshots)
+- [Candidate mode](#candidate-mode)
+- [Recruiter / HR mode](#recruiter--hr-mode)
+- [Why RAG instead of sending everything to the LLM](#why-rag-instead-of-sending-everything-to-the-llm)
+- [Why all-MiniLM-L6-v2](#why-all-minilm-l6-v2)
+- [Why in-memory cosine similarity instead of a vector database](#why-in-memory-cosine-similarity-instead-of-a-vector-database)
 - [Why Gemini instead of Claude](#why-gemini-instead-of-claude)
 - [Project layout](#project-layout)
 - [Embeddings status](#embeddings-status)
@@ -33,6 +39,53 @@ User pastes CV ──► embedded in JS (@xenova/transformers, same model)
 ```
 
 No vector database, no separate Python server at runtime — Python runs once, offline, to precompute job embeddings.
+
+## Screenshots
+
+
+
+**Candidate mode — CV matched against job postings:**
+
+![Candidate mode screenshot](/webapp/dev.png)
+
+**Recruiter mode — CVs ranked against a Job Description:**
+
+![Recruiter mode screenshot](/webapp/hr.png)
+
+## Candidate mode
+
+The original flow: a job seeker pastes or uploads a CV, and the app returns the top matching postings from the 382-job dataset, each with a Gemini-generated breakdown of strengths, gaps, and an overall recommendation.
+
+## Recruiter / HR mode
+
+The reverse flow: a recruiter pastes a Job Description instead of a CV. The JD is embedded the same way a CV would be, then compared against a pool of candidate CVs (rather than against the job postings dataset), returning a ranked list of the best-fitting candidates with the same strengths/gaps breakdown per match.
+
+Architecturally this reuses the same embedding + cosine-similarity + Gemini pipeline as candidate mode — only the direction of the comparison changes (JD → CVs instead of CV → jobs), and the CV pool is supplied by the recruiter rather than being the fixed 382-job dataset.
+
+## Why RAG instead of sending everything to the LLM
+
+Sending all 382 (or all candidate CVs) straight to Gemini alongside every query has three problems:
+
+1. **Cost and speed.** Each job posting's `full_text` is long. Sending hundreds of full descriptions per request means thousands of tokens per call — slower, more expensive, and likely to hit the free-tier daily quota fast.
+2. **Ranking quality.** An LLM asked to rank hundreds of options at once is worse at precise ranking than a model built for numerical comparison. LLMs are strong at understanding and explaining text, not at precisely comparing hundreds of vectors against each other.
+3. **Hallucination risk.** Letting the LLM invent the ranking from scratch risks it "imagining" a fit that isn't actually supported by the data.
+
+So the work is split into two stages:
+
+- **Retrieval:** embeddings + cosine similarity filter the full set down to the top N candidates fast and at near-zero cost (a plain numerical operation, no LLM call).
+- **Generation:** only those top N — already real and relevant — are sent to Gemini to explain the fit. The LLM's job here is "understand and compare," not "search and pick from hundreds."
+
+This is the standard RAG pattern: an external data source (jobs or CVs) plus semantic search (embeddings) retrieves the most relevant items, and the LLM generates an answer grounded in that retrieved data rather than inventing one.
+
+## Why all-MiniLM-L6-v2
+
+- Purpose-built for semantic similarity — not a general chat model repurposed for comparison. Its native training objective is exactly "how close in meaning are these two pieces of text," which is exactly what's needed between a CV/JD and a job/candidate description.
+- Lightweight (384 dimensions, ~90MB) — runs without a GPU and fast, matching the project's "entirely free/self-hosted" goal. Larger embedding models (e.g. all-mpnet-base-v2) are marginally more accurate but heavier, which isn't worth it at this dataset's scale.
+- Available in near-identical Python (`sentence-transformers`) and JS (`@xenova/transformers`) implementations. This matters because job/CV embeddings are computed offline in Python, while the CV or JD submitted live is embedded client-side in JavaScript on every request. If the two used different models, the vectors would live in different embedding spaces and cosine similarity between them would be meaningless — hence `verify_embedding_parity.py`, which confirms both implementations produce numerically consistent output.
+
+## Why in-memory cosine similarity instead of a vector database
+
+Only 382 job postings (and typically a modest CV pool in recruiter mode). Brute-force cosine similarity — comparing one vector against every other vector directly — takes a fraction of a second at this scale. Vector databases earn their keep at millions of records needing fast indexing; here, one would be over-engineering with no real benefit.
 
 ## Why Gemini instead of Claude
 
