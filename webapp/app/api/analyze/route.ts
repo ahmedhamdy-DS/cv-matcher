@@ -8,9 +8,7 @@ import type { AnalyzeRequestBody, AnalyzeResponse, JobAnalysis, RankedJob } from
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// gemini-2.5-flash has a genuinely free tier (no credit card required)
-// with daily quotas generous enough for a portfolio project. See
-// ai.google.dev/pricing for current limits.
+
 const GEMINI_MODEL = "gemini-2.5-flash";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? "");
@@ -34,10 +32,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Embed the CV in JS, same model/space as the offline job embeddings.
+
     const cvEmbedding = await embedText(cvText);
 
-    // 2. In-memory cosine similarity search over all 382 jobs.
+
     const jobs = getAllJobs();
     const ranked = rankJobsBySimilarity(cvEmbedding, jobs, topN);
 
