@@ -50,7 +50,7 @@ def main():
         )
         pad = np.zeros((reduced.shape[0], DIM - n_components), dtype=reduced.dtype)
         reduced = np.hstack([reduced, pad])
-    reduced = normalize(reduced)  # unit-norm, so cosine sim == dot product
+    reduced = normalize(reduced)  
 
     out = []
     for job, vec in zip(jobs, reduced):
